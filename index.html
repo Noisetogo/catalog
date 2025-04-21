@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Noise To Go Catalog</title>
+  <style>
+    body {
+      background-color: #d3f9d8;
+      font-weight: bold;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    h1 {
+      text-align: center;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      background-color: #d3f9d8;
+      padding: 20px;
+      z-index: 1000;
+      margin: 0;
+    }
+
+    .user-info {
+      position: fixed;
+      top: 80px;
+      left: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .user-info input {
+      padding: 5px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      width: 250px;
+    }
+
+    #submitOrder {
+      position: fixed;
+      top: 140px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+      z-index: 1000;
+    }
+
+    #submitOrder:hover {
+      background-color: #45a049;
+    }
+
+    .table-container {
+      margin-top: 200px;
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th, td {
+      padding: 10px;
+      text-align: left;
+      font-size: 14px;
+      word-wrap: break-word;
+      border: 1px solid #ddd;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background-color: #f1f1f1;
+      z-index: 900;
+    }
+
+    tbody {
+      display: block;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    tr {
+      display: table;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    img {
+      max-width: 100px;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Noise To Go!</h1>
+
+<div class="user-info">
+  <input type="text" id="customerName" placeholder="Customer Name" />
+  <input type="email" id="customerEmail" placeholder="Customer Email Address" />
+</div>
+
+<button id="submitOrder">Submit Order</button>
+
+<div class="table-container">
+  <table id="productTable">
+    <thead>
+      <tr>
+        <th>Cover Image</th>
+        <th>Description</th>
+        <th>Format</th>
+        <th>Units</th>
+        <th>Color</th>
+        <th>Wholesale Price</th>
+        <th>Quantity</th>
+        <th>Quantity on hand case equivalents</th>
+        <th class="hidden">Product ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Product rows will be injected here -->
+    </tbody>
+  </table>
+</div>
+
+<script>
+  const sheetUrl = 'https://script.google.com/macros/s/AKfycbxdrvPe1x5NLVaxbLqtnDyoXpENli_JmsaPtJaUJBl0_m-IWT7t2iyG661qH9mdL2hfIg/exec';
+  const scriptEndpoint = 'https://script.google.com/macros/s/AKfycbxnuQMyl_mM4hnCpp6t4pDwn8Hc_xs2hZtgyXQW42E9pI1h_-5JTNbbH7qT5zRypJu6Kw/exec'; // ✅ Make sure this is your actual Web App URL
+
+  let productQuantities = {};
+
+  async function loadProducts() {
+    try {
+      const response = await fetch(sheetUrl);
+      const data = await response.json();
+      data.sort((a, b) => a['Sort Code'] - b['Sort Code']);
+      renderTable(data);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    }
+  }
+
+  function renderTable(products) {
+    const tbody = document.querySelector('#productTable tbody');
+    tbody.innerHTML = '';
+
+    products.forEach(product => {
+      const productId = product['Product ID'];
+      const savedQuantity = productQuantities[productId] || 0;
+      const quantityOnHand = product['Quantity on hand case equivalents'];
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><img src="${product['Primary image URL']}" alt=""></td>
+        <td>${product['Description']}</td>
+        <td>${product['Format']}</td>
+        <td>${product['Units']}</td>
+        <td>${product['Color']}</td>
+        <td>${product['Wholesale Price']}</td>
+        <td><input type="number" id="quantity_${productId}" value="${savedQuantity}" min="0" data-quantity-on-hand="${quantityOnHand}"/></td>
+        <td>${quantityOnHand}</td>
+        <td class="hidden">${productId}</td>
+      `;
+      tbody.appendChild(row);
+
+      row.querySelector('input[type="number"]').addEventListener('input', updateTotalQuantity);
+    });
+
+    updateTotalQuantity();
+  }
+
+  function updateTotalQuantity() {
+    let totalQuantity = 0;
+    document.querySelectorAll('#productTable tbody input[type="number"]').forEach(input => {
+      totalQuantity += parseInt(input.value, 10) || 0;
+    });
+    document.getElementById('submitOrder').textContent = `Submit Order (${totalQuantity} items)`;
+  }
+
+  document.getElementById('submitOrder').addEventListener('click', async () => {
+    const customerName = document.getElementById('customerName').value.trim();
+    const customerEmail = document.getElementById('customerEmail').value.trim();
+
+    if (!customerName || !customerEmail) {
+      alert('Please enter both Customer Name and Email Address.');
+      return;
+    }
+
+    const products = [];
+    const rows = document.querySelectorAll('#productTable tbody tr');
+
+    rows.forEach(row => {
+      const productId = row.querySelector('.hidden').textContent;
+      const description = row.cells[1].textContent;
+      const wholesalePrice = row.cells[5].textContent;
+      const quantityInput = row.querySelector('input[type="number"]');
+      let quantity = parseInt(quantityInput.value, 10);
+      const quantityOnHand = parseInt(quantityInput.getAttribute('data-quantity-on-hand'), 10);
+
+      if (quantity > quantityOnHand) {
+        alert(`You cannot order more than ${quantityOnHand} units of: ${description}`);
+        quantity = quantityOnHand;
+        quantityInput.value = quantityOnHand;
+      }
+
+      if (quantity > 0) {
+        products.push({ productId, wholesalePrice, quantity, description });
+      }
+
+      productQuantities[productId] = quantity;
+    });
+
+    if (products.length === 0) {
+      alert("Please select at least one product.");
+      return;
+    }
+
+    const csv = generateCSV(products);
+
+    const payload = {
+      csv: csv,
+      customer_name: customerName,
+      customer_email: customerEmail
+    };
+
+    console.log("Sending payload to server:", payload);
+
+    try {
+      const res = await fetch(scriptEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const resultText = await res.text();
+      console.log("Server response:", resultText);
+
+      alert(resultText.includes('success') ? 'Order submitted successfully!' : `Error sending order:\n${resultText}`);
+    } catch (err) {
+      console.error('Fetch error:', err);
+      alert('Error submitting order. See console for details.');
+    }
+  });
+
+  function generateCSV(data) {
+    let csvContent = "Product ID,Wholesale Price,Quantity,Description\n";
+    data.forEach(item => {
+      csvContent += `${item.productId},${item.wholesalePrice},${item.quantity},${item.description}\n`;
+    });
+    return csvContent;
+  }
+
+  window.onload = loadProducts;
+</script>
+
+
+</body>
+</html>
